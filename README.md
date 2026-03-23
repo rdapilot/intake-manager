@@ -10,6 +10,7 @@ A simple full-stack procurement intake and requisition workflow starter built wi
 
 - Dynamic form template builder for intake and requisition forms
 - Employee request submission with required field validation
+- Invoice processor with OCR, line-item extraction, PO/receipt matching, anomaly detection, exception routing, and payment timing optimization
 - Auto-routing to line manager and budget owner
 - Optional routing to Legal and InfoSec for risky categories
 - Consolidation and bundling queue

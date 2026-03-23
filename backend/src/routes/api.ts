@@ -2,7 +2,8 @@ import { Router } from 'express';
 import { buildWorkflow, syncWorkflowForStatus } from '../services/workflow.js';
 import { store } from '../services/store.js';
 import { simulateVerification } from '../services/verification.js';
-import { FormRequest, FormTemplate, NotificationItem, RequestStatus, TemplateField } from '../types/domain.js';
+import { processInvoice } from '../services/invoiceProcessor.js';
+import { FormRequest, FormTemplate, InvoiceLineItem, NotificationItem, RequestStatus, TemplateField } from '../types/domain.js';
 
 const router = Router();
 
@@ -216,6 +217,113 @@ router.get('/notifications', (_req, res) => {
 
 router.get('/audit-trail', (_req, res) => {
   res.json(store.auditTrail);
+});
+
+router.get('/invoices', (_req, res) => {
+  res.json(store.invoices);
+});
+
+router.post('/invoices', (req, res) => {
+  const payload = req.body as {
+    invoiceNumber?: string;
+    vendorName?: string;
+    vendorTaxId?: string;
+    poNumber?: string;
+    receiptNumber?: string;
+    currency?: string;
+    subtotal?: number;
+    taxAmount?: number;
+    totalAmount?: number;
+    dueDate?: string;
+    paymentTerms?: string;
+    lineItems?: InvoiceLineItem[];
+  };
+
+  const required = ['invoiceNumber', 'vendorName', 'poNumber', 'currency', 'dueDate'];
+  const missing = required.filter((key) => !payload[key as keyof typeof payload]);
+
+  if (missing.length > 0) {
+    return res.status(400).json({ message: `Missing invoice fields: ${missing.join(', ')}` });
+  }
+
+  const lineItems = payload.lineItems?.length
+    ? payload.lineItems
+    : [
+        {
+          id: createId('line'),
+          description: 'Extracted invoice line',
+          quantity: 1,
+          unitPrice: Number(payload.subtotal ?? payload.totalAmount ?? 0),
+          total: Number(payload.subtotal ?? payload.totalAmount ?? 0)
+        }
+      ];
+
+  const invoice = processInvoice({
+    invoiceNumber: String(payload.invoiceNumber),
+    vendorName: String(payload.vendorName),
+    vendorTaxId: String(payload.vendorTaxId ?? ''),
+    poNumber: String(payload.poNumber),
+    receiptNumber: String(payload.receiptNumber ?? ''),
+    currency: String(payload.currency ?? 'USD'),
+    subtotal: Number(payload.subtotal ?? payload.totalAmount ?? 0),
+    taxAmount: Number(payload.taxAmount ?? 0),
+    totalAmount: Number(payload.totalAmount ?? payload.subtotal ?? 0),
+    dueDate: String(payload.dueDate),
+    paymentTerms: String(payload.paymentTerms ?? 'Net 30'),
+    lineItems
+  });
+
+  store.invoices.unshift(invoice);
+  store.auditTrail.unshift({
+    id: createId('adt'),
+    requestId: invoice.id,
+    actor: 'system',
+    action: 'invoice_processed',
+    detail: `Invoice ${invoice.invoiceNumber} processed through OCR, matching, anomaly detection, and payment timing.`,
+    timestamp: invoice.updatedAt
+  });
+  store.notifications.unshift({
+    id: createId('ntf'),
+    requestId: invoice.id,
+    audience: 'finance_controller',
+    title: invoice.processingState === 'exception' ? 'Invoice exception routed' : 'Invoice ready for payment review',
+    message:
+      invoice.processingState === 'exception'
+        ? `${invoice.invoiceNumber} has anomalies and was routed to ${invoice.exceptionRoute}.`
+        : `${invoice.invoiceNumber} completed processing and has a suggested payment date.`,
+    read: false,
+    createdAt: invoice.updatedAt
+  });
+
+  return res.status(201).json(invoice);
+});
+
+router.post('/invoices/:id/run', (req, res) => {
+  const target = store.invoices.find((item) => item.id === req.params.id);
+  if (!target) {
+    return res.status(404).json({ message: 'Invoice not found.' });
+  }
+
+  const refreshed = processInvoice(
+    {
+      invoiceNumber: target.invoiceNumber,
+      vendorName: target.vendorName,
+      vendorTaxId: target.vendorTaxId,
+      poNumber: target.poNumber,
+      receiptNumber: target.receiptNumber,
+      currency: target.currency,
+      subtotal: target.subtotal,
+      taxAmount: target.taxAmount,
+      totalAmount: target.totalAmount,
+      dueDate: target.dueDate,
+      paymentTerms: target.paymentTerms,
+      lineItems: target.lineItems
+    },
+    target.id
+  );
+
+  Object.assign(target, refreshed, { createdAt: target.createdAt, updatedAt: new Date().toISOString() });
+  res.json(target);
 });
 
 router.get('/requests/:id/export', (req, res) => {

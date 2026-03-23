@@ -1,4 +1,4 @@
-import { AuditEntry, Bundle, DashboardData, FormRequest, FormTemplate, NotificationItem } from '../types/domain.js';
+import { AuditEntry, Bundle, DashboardData, FormRequest, FormTemplate, InvoiceRecord, NotificationItem } from '../types/domain.js';
 
 const now = new Date().toISOString();
 
@@ -149,6 +149,75 @@ export const seedBundles: Bundle[] = [
   }
 ];
 
+export const seedInvoices: InvoiceRecord[] = [
+  {
+    id: 'inv-001',
+    invoiceNumber: 'INV-2026-0041',
+    vendorName: 'DocFlow AI',
+    vendorTaxId: 'TIN-883014',
+    poNumber: 'PO-22018',
+    receiptNumber: 'RCV-9018',
+    currency: 'USD',
+    subtotal: 12000,
+    taxAmount: 400,
+    totalAmount: 12400,
+    dueDate: new Date(Date.now() + 1000 * 60 * 60 * 24 * 12).toISOString(),
+    paymentTerms: 'Net 15',
+    ocrConfidence: 0.96,
+    lineItems: [
+      { id: 'li-1', description: 'Enterprise workflow subscription', quantity: 100, unitPrice: 120, total: 12000, glCode: '6100-SaaS' }
+    ],
+    tasks: [
+      { key: 'ocr_invoice', label: 'OCR invoice', status: 'completed', detail: 'Invoice image parsed with 96% confidence.' },
+      { key: 'extract_line_items', label: 'Extract line items', status: 'completed', detail: '1 line item extracted and normalized.' },
+      { key: 'validate_vendor_tax', label: 'Validate vendor + tax info', status: 'completed', detail: 'Vendor and tax ID match master data.' },
+      { key: 'match_po_receipt', label: 'Match invoice with PO + receipt', status: 'completed', detail: 'Three-way match succeeded.' },
+      { key: 'detect_anomalies', label: 'Detect anomalies / fraud', status: 'completed', detail: 'No duplicate or amount mismatch flags.' },
+      { key: 'route_exceptions', label: 'Route exceptions', status: 'completed', detail: 'No exception routing needed.' },
+      { key: 'optimize_payment_timing', label: 'Optimize payment timing', status: 'optimized', detail: 'Recommended payment date preserves term compliance.' }
+    ],
+    anomalies: [],
+    exceptionRoute: 'Auto-cleared',
+    suggestedPaymentDate: new Date(Date.now() + 1000 * 60 * 60 * 24 * 10).toISOString(),
+    processingState: 'processed',
+    createdAt: now,
+    updatedAt: now
+  },
+  {
+    id: 'inv-002',
+    invoiceNumber: 'INV-2026-0177',
+    vendorName: 'Office Axis Ltd',
+    vendorTaxId: 'TIN-554821',
+    poNumber: 'PO-22039',
+    receiptNumber: 'RCV-0000',
+    currency: 'USD',
+    subtotal: 6800,
+    taxAmount: 0,
+    totalAmount: 6800,
+    dueDate: new Date(Date.now() + 1000 * 60 * 60 * 24 * 5).toISOString(),
+    paymentTerms: 'Net 7',
+    ocrConfidence: 0.88,
+    lineItems: [
+      { id: 'li-2', description: 'Standing desks', quantity: 20, unitPrice: 340, total: 6800, glCode: '6400-Facilities' }
+    ],
+    tasks: [
+      { key: 'ocr_invoice', label: 'OCR invoice', status: 'completed', detail: 'OCR succeeded with moderate confidence.' },
+      { key: 'extract_line_items', label: 'Extract line items', status: 'completed', detail: '1 line item extracted.' },
+      { key: 'validate_vendor_tax', label: 'Validate vendor + tax info', status: 'completed', detail: 'Vendor matched, tax missing on invoice.' },
+      { key: 'match_po_receipt', label: 'Match invoice with PO + receipt', status: 'needs_review', detail: 'Receipt record missing for one match leg.' },
+      { key: 'detect_anomalies', label: 'Detect anomalies / fraud', status: 'needs_review', detail: 'Short payment term and missing receipt triggered review.' },
+      { key: 'route_exceptions', label: 'Route exceptions', status: 'needs_review', detail: 'Routed to AP analyst and receiving team.' },
+      { key: 'optimize_payment_timing', label: 'Optimize payment timing', status: 'pending', detail: 'Waiting for exception clearance before scheduling payment.' }
+    ],
+    anomalies: ['Receipt not found for PO-22039', 'Missing tax on invoice image'],
+    exceptionRoute: 'AP analyst + Receiving',
+    suggestedPaymentDate: '',
+    processingState: 'exception',
+    createdAt: now,
+    updatedAt: now
+  }
+];
+
 export const seedNotifications: NotificationItem[] = [
   {
     id: 'ntf-001',
@@ -165,6 +234,15 @@ export const seedNotifications: NotificationItem[] = [
     audience: 'all',
     title: 'Bundling candidate detected',
     message: 'TRK-1002 can be merged into the current facilities furniture bundle.',
+    read: false,
+    createdAt: now
+  },
+  {
+    id: 'ntf-003',
+    requestId: 'inv-002',
+    audience: 'finance_controller',
+    title: 'Invoice exception needs review',
+    message: 'INV-2026-0177 failed receipt matching and has been routed for AP review.',
     read: false,
     createdAt: now
   }
@@ -186,6 +264,14 @@ export const seedAuditTrail: AuditEntry[] = [
     action: 'reviewed',
     detail: 'Vendor stores customer metadata; DPA required before contracting.',
     timestamp: now
+  },
+  {
+    id: 'adt-003',
+    requestId: 'inv-002',
+    actor: 'system',
+    action: 'invoice_exception_routed',
+    detail: 'Invoice INV-2026-0177 routed to AP analyst and receiving after PO/receipt mismatch.',
+    timestamp: now
   }
 ];
 
@@ -193,6 +279,7 @@ export const seedDashboard: DashboardData = {
   templates: seedTemplates,
   requests: seedRequests,
   bundles: seedBundles,
+  invoices: seedInvoices,
   notifications: seedNotifications,
   auditTrail: seedAuditTrail
 };

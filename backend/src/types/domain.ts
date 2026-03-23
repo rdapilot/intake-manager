@@ -113,10 +113,60 @@ export interface VerificationResult {
   notes: string[];
 }
 
+export type InvoiceTaskStatus = 'pending' | 'completed' | 'needs_review' | 'optimized';
+
+export interface InvoiceLineItem {
+  id: string;
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  total: number;
+  glCode?: string;
+}
+
+export interface InvoiceTask {
+  key:
+    | 'ocr_invoice'
+    | 'extract_line_items'
+    | 'validate_vendor_tax'
+    | 'match_po_receipt'
+    | 'detect_anomalies'
+    | 'route_exceptions'
+    | 'optimize_payment_timing';
+  label: string;
+  status: InvoiceTaskStatus;
+  detail: string;
+}
+
+export interface InvoiceRecord {
+  id: string;
+  invoiceNumber: string;
+  vendorName: string;
+  vendorTaxId: string;
+  poNumber: string;
+  receiptNumber: string;
+  currency: string;
+  subtotal: number;
+  taxAmount: number;
+  totalAmount: number;
+  dueDate: string;
+  paymentTerms: string;
+  ocrConfidence: number;
+  lineItems: InvoiceLineItem[];
+  tasks: InvoiceTask[];
+  anomalies: string[];
+  exceptionRoute: string;
+  suggestedPaymentDate: string;
+  processingState: 'new' | 'processed' | 'exception';
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface DashboardData {
   templates: FormTemplate[];
   requests: FormRequest[];
   bundles: Bundle[];
+  invoices: InvoiceRecord[];
   notifications: NotificationItem[];
   auditTrail: AuditEntry[];
 }

@@ -1,4 +1,4 @@
-import { DashboardData, FormRequest, FormTemplate, RequestStatus, VerificationResult } from './types';
+import { DashboardData, FormRequest, FormTemplate, InvoiceRecord, RequestStatus, VerificationResult } from './types';
 
 const jsonHeaders = { 'Content-Type': 'application/json' };
 
@@ -37,6 +37,16 @@ export const api = {
       method: 'POST',
       headers: jsonHeaders,
       body: JSON.stringify(payload)
+    }),
+  createInvoice: (payload: Partial<InvoiceRecord>) =>
+    request<InvoiceRecord>('/api/invoices', {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify(payload)
+    }),
+  runInvoiceProcessor: (id: string) =>
+    request<InvoiceRecord>('/api/invoices/' + id + '/run', {
+      method: 'POST'
     }),
   verifyRequest: (id: string) =>
     request<VerificationResult>('/api/requests/' + id + '/verify', {

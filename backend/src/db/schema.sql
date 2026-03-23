@@ -45,6 +45,30 @@ CREATE TABLE IF NOT EXISTS bundles (
   status TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS invoices (
+  id TEXT PRIMARY KEY,
+  invoice_number TEXT NOT NULL UNIQUE,
+  vendor_name TEXT NOT NULL,
+  vendor_tax_id TEXT NOT NULL,
+  po_number TEXT NOT NULL,
+  receipt_number TEXT NOT NULL,
+  currency TEXT NOT NULL,
+  subtotal NUMERIC(14,2) NOT NULL,
+  tax_amount NUMERIC(14,2) NOT NULL,
+  total_amount NUMERIC(14,2) NOT NULL,
+  due_date TIMESTAMPTZ NOT NULL,
+  payment_terms TEXT NOT NULL,
+  ocr_confidence NUMERIC(5,2) NOT NULL,
+  line_items JSONB NOT NULL,
+  tasks JSONB NOT NULL,
+  anomalies JSONB NOT NULL,
+  exception_route TEXT NOT NULL,
+  suggested_payment_date TIMESTAMPTZ,
+  processing_state TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS notifications (
   id TEXT PRIMARY KEY,
   request_id TEXT NOT NULL,

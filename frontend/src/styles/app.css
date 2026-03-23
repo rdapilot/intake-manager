@@ -358,6 +358,18 @@ textarea {
   background: rgba(47, 107, 79, 0.14);
 }
 
+.status-processed {
+  background: rgba(47, 107, 79, 0.14);
+}
+
+.status-exception {
+  background: rgba(183, 75, 75, 0.12);
+}
+
+.status-new {
+  background: rgba(208, 164, 60, 0.18);
+}
+
 .checkbox-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -410,6 +422,14 @@ textarea {
   background: rgba(47, 107, 79, 0.14);
 }
 
+.workflow-pill.needs_review {
+  background: rgba(183, 75, 75, 0.12);
+}
+
+.workflow-pill.optimized {
+  background: rgba(47, 107, 79, 0.18);
+}
+
 .workflow-pill.skipped {
   opacity: 0.55;
 }
@@ -446,6 +466,26 @@ textarea {
 .empty-state {
   padding: 1.4rem;
   text-align: center;
+  color: var(--muted);
+}
+
+.invoice-panel-wide {
+  grid-column: 1 / -1;
+}
+
+.invoice-task-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 0.75rem;
+  margin: 1rem 0;
+}
+
+.invoice-task {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.invoice-task small {
   color: var(--muted);
 }
 

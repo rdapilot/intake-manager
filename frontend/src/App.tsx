@@ -5,6 +5,7 @@ import {
   DashboardData,
   FieldType,
   FormRequest,
+  InvoiceRecord,
   NotificationItem,
   RequestStatus,
   TemplateField,
@@ -15,6 +16,7 @@ type PageKey =
   | 'overview'
   | 'templates'
   | 'requests'
+  | 'invoices'
   | 'approvals'
   | 'bundling'
   | 'procurement'
@@ -49,10 +51,29 @@ interface RequestDraft {
   formData: Record<string, string | number | boolean>;
 }
 
+interface InvoiceDraft {
+  invoiceNumber: string;
+  vendorName: string;
+  vendorTaxId: string;
+  poNumber: string;
+  receiptNumber: string;
+  currency: string;
+  subtotal: number;
+  taxAmount: number;
+  totalAmount: number;
+  dueDate: string;
+  paymentTerms: string;
+  lineDescription: string;
+  lineQuantity: number;
+  lineUnitPrice: number;
+  glCode: string;
+}
+
 const navItems: { key: PageKey; label: string; hint: string }[] = [
   { key: 'overview', label: 'Overview', hint: 'Pipeline and health' },
   { key: 'templates', label: 'Template Builder', hint: 'Dynamic intake forms' },
   { key: 'requests', label: 'Submit Request', hint: 'Employee workbench' },
+  { key: 'invoices', label: 'Invoice Processor', hint: 'OCR to payment timing' },
   { key: 'approvals', label: 'Approvals', hint: 'Line manager and budget owner' },
   { key: 'bundling', label: 'Bundling', hint: 'Consolidation queue' },
   { key: 'procurement', label: 'Procurement', hint: 'Commercial review' },
@@ -94,6 +115,24 @@ const emptyRequestDraft = (): RequestDraft => ({
   needsDataSharingReview: false,
   needsStorageReview: false,
   formData: {}
+});
+
+const emptyInvoiceDraft = (): InvoiceDraft => ({
+  invoiceNumber: '',
+  vendorName: '',
+  vendorTaxId: '',
+  poNumber: '',
+  receiptNumber: '',
+  currency: 'USD',
+  subtotal: 0,
+  taxAmount: 0,
+  totalAmount: 0,
+  dueDate: '',
+  paymentTerms: 'Net 30',
+  lineDescription: '',
+  lineQuantity: 1,
+  lineUnitPrice: 0,
+  glCode: ''
 });
 
 const statusOrder: RequestStatus[] = [
@@ -142,6 +181,7 @@ function App() {
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [builder, setBuilder] = useState<BuilderState>(emptyBuilder);
   const [draft, setDraft] = useState<RequestDraft>(emptyRequestDraft);
+  const [invoiceDraft, setInvoiceDraft] = useState<InvoiceDraft>(emptyInvoiceDraft);
   const [bundleSelection, setBundleSelection] = useState<string[]>([]);
   const [bundleTitle, setBundleTitle] = useState('Q3 Combined Procurement Bundle');
   const [bundleOwner, setBundleOwner] = useState('Procurement Operations');
@@ -175,6 +215,7 @@ function App() {
   const templates = dashboard?.templates ?? [];
   const requests = dashboard?.requests ?? [];
   const bundles = dashboard?.bundles ?? [];
+  const invoices = dashboard?.invoices ?? [];
   const notifications = dashboard?.notifications ?? [];
   const auditTrail = dashboard?.auditTrail ?? [];
 
@@ -208,8 +249,9 @@ function App() {
     const totalValue = requests.reduce((sum, item) => sum + item.amount, 0);
     const atFinal = requests.filter((item) => item.status === 'final_approval' || item.status === 'approved').length;
     const risky = requests.filter((item) => item.requiresInfoSec || item.requiresLegal).length;
-    return { totalValue, atFinal, risky };
-  }, [requests]);
+    const invoiceExceptions = invoices.filter((item) => item.processingState === 'exception').length;
+    return { totalValue, atFinal, risky, invoiceExceptions };
+  }, [requests, invoices]);
 
   const updateField = (fieldId: string, patch: Partial<TemplateField>) => {
     setBuilder((current) => ({
@@ -341,6 +383,55 @@ function App() {
       await loadDashboard();
     } catch (verifyError) {
       setError(verifyError instanceof Error ? verifyError.message : 'Unable to verify request.');
+    }
+  };
+
+  const handleInvoiceSubmit = async (event: FormEvent) => {
+    event.preventDefault();
+    try {
+      setError('');
+      setMessage('');
+      await api.createInvoice({
+        invoiceNumber: invoiceDraft.invoiceNumber,
+        vendorName: invoiceDraft.vendorName,
+        vendorTaxId: invoiceDraft.vendorTaxId,
+        poNumber: invoiceDraft.poNumber,
+        receiptNumber: invoiceDraft.receiptNumber,
+        currency: invoiceDraft.currency,
+        subtotal: invoiceDraft.subtotal,
+        taxAmount: invoiceDraft.taxAmount,
+        totalAmount: invoiceDraft.totalAmount || invoiceDraft.subtotal + invoiceDraft.taxAmount,
+        dueDate: invoiceDraft.dueDate,
+        paymentTerms: invoiceDraft.paymentTerms,
+        lineItems: [
+          {
+            id: 'line-ui',
+            description: invoiceDraft.lineDescription || 'Invoice line item',
+            quantity: invoiceDraft.lineQuantity,
+            unitPrice: invoiceDraft.lineUnitPrice,
+            total: invoiceDraft.lineQuantity * invoiceDraft.lineUnitPrice,
+            glCode: invoiceDraft.glCode
+          }
+        ]
+      });
+      setInvoiceDraft(emptyInvoiceDraft());
+      setMessage('Invoice processed through OCR, matching, anomaly detection, and payment optimization.');
+      setPage('invoices');
+      await loadDashboard();
+    } catch (invoiceError) {
+      setError(invoiceError instanceof Error ? invoiceError.message : 'Unable to process invoice.');
+    }
+  };
+
+  const rerunInvoice = async (invoiceId: string) => {
+    try {
+      setError('');
+      setMessage('');
+      await api.runInvoiceProcessor(invoiceId);
+      setMessage('Invoice processor re-ran all atomic tasks.');
+      await loadDashboard();
+    } catch (invoiceError) {
+      setError(invoiceError instanceof Error ? invoiceError.message : 'Unable to re-run invoice processor.');
     }
   };
 
@@ -486,7 +577,7 @@ function App() {
               <MetricCard title="Pipeline Value" value={'$' + requestSummary.totalValue.toLocaleString()} detail="Across all active requests" />
               <MetricCard title="Risk-Routed Requests" value={String(requestSummary.risky)} detail="Legal or InfoSec involved" />
               <MetricCard title="Near Approval" value={String(requestSummary.atFinal)} detail="At final approval or approved" />
-              <MetricCard title="Bundles" value={String(bundles.length)} detail="Open consolidation groups" />
+              <MetricCard title="Invoice Exceptions" value={String(requestSummary.invoiceExceptions)} detail="Invoices routed for review" />
             </section>
 
             <section className="panel">
@@ -516,6 +607,7 @@ function App() {
                 <ul className="plain-list">
                   <li>Approval thresholds by spend, category, or entity.</li>
                   <li>Duplicate supplier and duplicate request matching.</li>
+                  <li>Invoice OCR, PO-receipt matching, and exception routing.</li>
                   <li>Supplier onboarding checklist and contract metadata capture.</li>
                   <li>SLA timers, escalation notifications, and overdue review highlighting.</li>
                 </ul>
@@ -718,6 +810,155 @@ function App() {
                 <li>Requests then move to bundling, procurement review, final approval, and export.</li>
               </ul>
             </Panel>
+          </section>
+        ) : null}
+
+        {!loading && page === 'invoices' ? (
+          <section className="panel-grid">
+            <Panel title="Invoice Processing Intake" subtitle="Capture invoice details and run the atomic processing steps">
+              <form className="form-grid" onSubmit={handleInvoiceSubmit}>
+                <input
+                  value={invoiceDraft.invoiceNumber}
+                  onChange={(event) => setInvoiceDraft({ ...invoiceDraft, invoiceNumber: event.target.value })}
+                  placeholder="Invoice number"
+                />
+                <input
+                  value={invoiceDraft.vendorName}
+                  onChange={(event) => setInvoiceDraft({ ...invoiceDraft, vendorName: event.target.value })}
+                  placeholder="Vendor name"
+                />
+                <input
+                  value={invoiceDraft.vendorTaxId}
+                  onChange={(event) => setInvoiceDraft({ ...invoiceDraft, vendorTaxId: event.target.value })}
+                  placeholder="Vendor tax ID"
+                />
+                <input
+                  value={invoiceDraft.poNumber}
+                  onChange={(event) => setInvoiceDraft({ ...invoiceDraft, poNumber: event.target.value })}
+                  placeholder="PO number"
+                />
+                <input
+                  value={invoiceDraft.receiptNumber}
+                  onChange={(event) => setInvoiceDraft({ ...invoiceDraft, receiptNumber: event.target.value })}
+                  placeholder="Receipt number"
+                />
+                <input
+                  type="date"
+                  value={invoiceDraft.dueDate}
+                  onChange={(event) => setInvoiceDraft({ ...invoiceDraft, dueDate: event.target.value })}
+                />
+                <input
+                  type="number"
+                  value={invoiceDraft.subtotal}
+                  onChange={(event) => setInvoiceDraft({ ...invoiceDraft, subtotal: Number(event.target.value) })}
+                  placeholder="Subtotal"
+                />
+                <input
+                  type="number"
+                  value={invoiceDraft.taxAmount}
+                  onChange={(event) => setInvoiceDraft({ ...invoiceDraft, taxAmount: Number(event.target.value) })}
+                  placeholder="Tax amount"
+                />
+                <input
+                  type="number"
+                  value={invoiceDraft.totalAmount}
+                  onChange={(event) => setInvoiceDraft({ ...invoiceDraft, totalAmount: Number(event.target.value) })}
+                  placeholder="Total amount"
+                />
+                <input
+                  value={invoiceDraft.paymentTerms}
+                  onChange={(event) => setInvoiceDraft({ ...invoiceDraft, paymentTerms: event.target.value })}
+                  placeholder="Payment terms"
+                />
+                <input
+                  value={invoiceDraft.lineDescription}
+                  onChange={(event) => setInvoiceDraft({ ...invoiceDraft, lineDescription: event.target.value })}
+                  placeholder="Primary line item description"
+                />
+                <input
+                  value={invoiceDraft.glCode}
+                  onChange={(event) => setInvoiceDraft({ ...invoiceDraft, glCode: event.target.value })}
+                  placeholder="GL code"
+                />
+                <input
+                  type="number"
+                  value={invoiceDraft.lineQuantity}
+                  onChange={(event) => setInvoiceDraft({ ...invoiceDraft, lineQuantity: Number(event.target.value) })}
+                  placeholder="Line quantity"
+                />
+                <input
+                  type="number"
+                  value={invoiceDraft.lineUnitPrice}
+                  onChange={(event) => setInvoiceDraft({ ...invoiceDraft, lineUnitPrice: Number(event.target.value) })}
+                  placeholder="Line unit price"
+                />
+                <button type="submit">Process invoice</button>
+              </form>
+            </Panel>
+
+            <Panel title="Atomic Tasks" subtitle="Matches the seven steps from your image">
+              <ul className="plain-list">
+                <li>OCR invoice</li>
+                <li>Extract line items</li>
+                <li>Validate vendor and tax info</li>
+                <li>Match invoice with PO and receipt</li>
+                <li>Detect anomalies or fraud</li>
+                <li>Route exceptions</li>
+                <li>Optimize payment timing</li>
+              </ul>
+            </Panel>
+
+            <section className="panel invoice-panel-wide">
+              <div className="panel-head">
+                <div>
+                  <p className="eyebrow">Processing queue</p>
+                  <h3>Invoice processor results</h3>
+                </div>
+              </div>
+              <div className="request-list">
+                {invoices.map((invoice) => (
+                  <div className="request-card" key={invoice.id}>
+                    <div className="request-top">
+                      <div>
+                        <strong>{invoice.invoiceNumber}</strong>
+                        <p>{invoice.vendorName} · {invoice.poNumber}</p>
+                      </div>
+                      <StatusPill status={invoice.processingState} />
+                    </div>
+                    <div className="detail-grid">
+                      <span>Total: {invoice.currency} {invoice.totalAmount.toLocaleString()}</span>
+                      <span>OCR: {(invoice.ocrConfidence * 100).toFixed(0)}%</span>
+                      <span>Exception route: {invoice.exceptionRoute}</span>
+                    </div>
+                    <div className="invoice-task-grid">
+                      {invoice.tasks.map((task) => (
+                        <div className={'workflow-pill invoice-task ' + task.status} key={task.key}>
+                          <strong>{task.label}</strong>
+                          <small>{task.detail}</small>
+                        </div>
+                      ))}
+                    </div>
+                    {invoice.anomalies.length > 0 ? (
+                      <ul className="plain-list compact-list">
+                        {invoice.anomalies.map((anomaly) => (
+                          <li key={anomaly}>{anomaly}</li>
+                        ))}
+                      </ul>
+                    ) : null}
+                    <div className="button-row">
+                      <button type="button" className="ghost-button" onClick={() => rerunInvoice(invoice.id)}>
+                        Re-run processor
+                      </button>
+                      <button type="button">
+                        {invoice.suggestedPaymentDate
+                          ? 'Suggested pay date: ' + new Date(invoice.suggestedPaymentDate).toLocaleDateString()
+                          : 'Awaiting exception clearance'}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
           </section>
         ) : null}
 
